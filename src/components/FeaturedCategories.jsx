@@ -65,9 +65,9 @@ const categories = [
   },
         {
       id: 7,
-    title: "Charms⭒˚.⋆",
-    imageUrl:"https://i.postimg.cc/pXS1wbgb/image.png",
-     link: "charms"
+    title: "Tiaras⭒˚.⋆",
+    imageUrl:"https://pbs.twimg.com/media/G2L_sByWAAEkmWY?format=png&name=small",
+     link: "Tiaras"
   },
   //       {
   //   id: 6,
