@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 
 function useQuery() {
@@ -25,12 +25,34 @@ function ProductGrid({ filters = {} }) {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const snapshot = await getDocs(collection(db, 'products'));
+        const cacheKey = categoryFromURL ? `products_${categoryFromURL}` : 'products_all';
+        const cachedProducts = localStorage.getItem(cacheKey);
+
+        if (cachedProducts) {
+          // ✅ Load from cache if available
+          setProducts(JSON.parse(cachedProducts));
+          setLoading(false);
+          return;
+        }
+
+        let q;
+
+        if (categoryFromURL) {
+          // ✅ Only fetch products in selected category
+          q = query(collection(db, 'products'), where('category', '==', categoryFromURL));
+        } else {
+          // Fallback: fetch all products
+          q = collection(db, 'products');
+        }
+
+        const snapshot = await getDocs(q);
         const items = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
         }));
+
         setProducts(items);
+        localStorage.setItem(cacheKey, JSON.stringify(items)); // ✅ Cache it
       } catch (err) {
         console.error('Error fetching products:', err);
       }
@@ -38,8 +60,9 @@ function ProductGrid({ filters = {} }) {
     };
 
     fetchProducts();
-  }, []);
+  }, [categoryFromURL]); // Refetch only when category changes
 
+  // 🔍 Apply filters locally
   const filteredProducts = products.filter((product) => {
     const matchesCategory = categoryFromURL
       ? product.category === categoryFromURL
@@ -70,7 +93,9 @@ function ProductGrid({ filters = {} }) {
     );
   });
 
-  const title = categoryFromURL || (searchFromURL ? `Results for "${searchFromURL}"` : 'All Products');
+  const title =
+    categoryFromURL ||
+    (searchFromURL ? `Results for "${searchFromURL}"` : 'All Products');
 
   if (loading) {
     return <p className="text-center p-8">Loading products...</p>;
@@ -91,16 +116,9 @@ function ProductGrid({ filters = {} }) {
       </div>
 
       {/* Page Title */}
-<div className="flex items-center gap-3">
-  <p className="text-[#141414] text-[32px] font-bold">{title}</p>
-  {/* <img
-    src="https://scontent.flhe3-1.fna.fbcdn.net/v/t1.15752-9/520249943_1246640230543113_7697647323329758006_n.png?_nc_cat=111&ccb=1-7&_nc_sid=0024fc&_nc_ohc=u4zfdXOAvU4Q7kNvwFgQO4Y&_nc_oc=AdkCBcsCu4mxcEKuOl_1zSvdugQR2ORe21nAFRnIAw_Oq8DlfBc5hW_xYG97-RFL4TA&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent.flhe3-1.fna&oh=03_Q7cD2wGI7Dwg4sWjdP_TmjqU0SJCVWSGWBo96a5JvK2vNYrosw&oe=68AD7B9F"
-    alt="category icon"
-    className="w-15 h-25 object-contain"
-  /> */}
-</div>
-
-
+      <div className="flex items-center gap-3">
+        <p className="text-[#141414] text-[32px] font-bold">{title}</p>
+      </div>
 
       {/* Product Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4">
@@ -108,8 +126,8 @@ function ProductGrid({ filters = {} }) {
           filteredProducts.map((product) => (
             <Link to={`/product/${product.id}`} key={product.id} className="h-full">
               <div className="flex flex-col h-full gap-3 pb-3 group shadow-md rounded-lg overflow-hidden transition-transform duration-300 hover:shadow-lg bg-[#FFF2EB]">
-                {/* Product image - fixed height */}
-             <div className="w-full aspect-square overflow-hidden">
+                {/* Product Image */}
+                <div className="w-full aspect-square overflow-hidden">
                   <img
                     src={product.coverImage || product.imageUrl}
                     alt={product.title}
@@ -117,10 +135,10 @@ function ProductGrid({ filters = {} }) {
                   />
                 </div>
 
-                {/* Product info - fixed height with consistent spacing */}
-                <div className="px-3 pb-4 flex flex-col justify-between h-[130px]"> {/* Fixed height for info section */}
-                  <div className="min-h-[60px] overflow-hidden"> {/* Fixed height for text */}
-                    <p className="text-[#141414] text-base font-medium line-clamp-2"> {/* Limit to 2 lines */}
+                {/* Product Info */}
+                <div className="px-3 pb-4 flex flex-col justify-between h-[130px]">
+                  <div className="min-h-[60px] overflow-hidden">
+                    <p className="text-[#141414] text-base font-medium line-clamp-2">
                       {product.title}
                     </p>
                     <p className="text-[#757575] text-sm font-normal mt-1">

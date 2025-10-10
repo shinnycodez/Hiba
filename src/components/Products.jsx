@@ -1,34 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import Header from './Header';
 import SidebarFilters from './SidebarFilters';
 import ProductGrid from './ProductGrid';
 import Newsletter from './Newsletter';
 import Footer from './Footer';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
 import { AiOutlineClose } from 'react-icons/ai';
 
 function Products() {
   const [filters, setFilters] = useState({});
-  const [allProducts, setAllProducts] = useState([]);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, 'products'));
-        const productList = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setAllProducts(productList);
-      } catch (error) {
-        console.error('Error fetching products:', error);
-      }
-    };
-
-    fetchProducts();
-  }, []);
 
   return (
     <div
@@ -68,15 +48,20 @@ function Products() {
                     <AiOutlineClose className="w-6 h-6" />
                   </button>
                 </div>
-              <SidebarFilters onFilterChange={setFilters} onClose={() => setMobileFiltersOpen(false)} />
-
+                <SidebarFilters
+                  onFilterChange={setFilters}
+                  onClose={() => setMobileFiltersOpen(false)}
+                />
               </div>
             )}
 
-            <ProductGrid products={allProducts} filters={filters} />
-
+            {/* Product Grid handles fetching & filtering */}
+            <ProductGrid filters={filters} />
           </div>
         </div>
+
+        <Newsletter />
+        <Footer />
       </div>
     </div>
   );
