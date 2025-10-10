@@ -26,22 +26,26 @@ function ProductGrid({ filters = {} }) {
     const fetchProducts = async () => {
       try {
         const cacheKey = categoryFromURL ? `products_${categoryFromURL}` : 'products_all';
+        const timestampKey = `${cacheKey}_timestamp`;
         const cachedProducts = localStorage.getItem(cacheKey);
+        const lastFetched = localStorage.getItem(timestampKey);
+        const now = Date.now();
 
-        if (cachedProducts) {
-          // ✅ Load from cache if available
+        // ⏱️ 30 minutes in milliseconds
+        const cacheExpiry = 30 * 60 * 1000;
+
+        // ✅ Use cache if within 30 minutes
+        if (cachedProducts && lastFetched && now - parseInt(lastFetched) < cacheExpiry) {
           setProducts(JSON.parse(cachedProducts));
           setLoading(false);
           return;
         }
 
+        // 🔥 Otherwise, fetch fresh data
         let q;
-
         if (categoryFromURL) {
-          // ✅ Only fetch products in selected category
           q = query(collection(db, 'products'), where('category', '==', categoryFromURL));
         } else {
-          // Fallback: fetch all products
           q = collection(db, 'products');
         }
 
@@ -52,15 +56,19 @@ function ProductGrid({ filters = {} }) {
         }));
 
         setProducts(items);
-        localStorage.setItem(cacheKey, JSON.stringify(items)); // ✅ Cache it
+
+        // 💾 Cache new data + timestamp
+        localStorage.setItem(cacheKey, JSON.stringify(items));
+        localStorage.setItem(timestampKey, now.toString());
       } catch (err) {
         console.error('Error fetching products:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchProducts();
-  }, [categoryFromURL]); // Refetch only when category changes
+  }, [categoryFromURL]);
 
   // 🔍 Apply filters locally
   const filteredProducts = products.filter((product) => {
