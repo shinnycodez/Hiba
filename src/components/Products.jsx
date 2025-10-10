@@ -59,9 +59,6 @@ function Products() {
             <ProductGrid filters={filters} />
           </div>
         </div>
-
-        <Newsletter />
-        <Footer />
       </div>
     </div>
   );
