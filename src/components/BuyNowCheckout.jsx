@@ -18,7 +18,7 @@ const BuyNowCheckout = () => {
     region: '',
     country: '',
     shippingMethod: 'Standard Delivery',
-    paymentMethod: 'JazzCash/Bank Transfer',
+    paymentMethod: 'Cash on Delivery (COD)', // Default to COD
     promoCode: '',
     notes: '',
   });
@@ -47,8 +47,8 @@ const BuyNowCheckout = () => {
   }, []);
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
-const shippingCost = form.city.trim().toLowerCase() === 'lahore' ? 200 : 350;
-
+  // Fixed delivery charges: PKR 250 for every city
+  const shippingCost = 250;
   const total = subtotal + shippingCost;
 
   const handleChange = (e) => {
@@ -122,6 +122,7 @@ const shippingCost = form.city.trim().toLowerCase() === 'lahore' ? 200 : 350;
       newErrors.phone = 'Please enter a valid phone number (at least 7 digits)';
     }
 
+    // Only require bank transfer proof for JazzCash/Bank Transfer
     if (form.paymentMethod === 'JazzCash/Bank Transfer' && !bankTransferProofBase64) {
       newErrors.bankTransferProof = 'Please upload a screenshot of your JazzCash transfer or bank transfer receipt.';
     }
@@ -184,6 +185,7 @@ const shippingCost = form.city.trim().toLowerCase() === 'lahore' ? 200 : 350;
       createdAt: new Date(),
       status: 'processing',
       buyNow: true,
+      // Only include bank transfer proof for JazzCash/Bank Transfer payments
       bankTransferProofBase64: form.paymentMethod === 'JazzCash/Bank Transfer' ? bankTransferProofBase64 : null,
     };
 
@@ -385,7 +387,7 @@ const shippingCost = form.city.trim().toLowerCase() === 'lahore' ? 200 : 350;
                   <div className="ml-3">
                     <p className="font-medium text-gray-900 text-sm sm:text-base">Standard Delivery</p>
                     <p className="text-xs sm:text-sm text-gray-500">
-                  PKR 200 for lahore and 350 for other cities - Delivery in 8-10 business days
+                      PKR 250 for all cities - Delivery in 8-10 business days
                     </p>
                   </div>
                 </label>
@@ -394,7 +396,7 @@ const shippingCost = form.city.trim().toLowerCase() === 'lahore' ? 200 : 350;
               <h2 className="text-lg sm:text-xl font-semibold mt-8 mb-6 pb-2 border-b">Payment Method</h2>
               
               <div className="space-y-4">
-                {['JazzCash/Bank Transfer'].map(method => (
+                {['Cash on Delivery (COD)', 'JazzCash/Bank Transfer'].map(method => (
                   <label key={method} className="flex items-center p-4 border rounded-md hover:border-black cursor-pointer">
                     <input
                       type="radio"
@@ -415,13 +417,13 @@ const shippingCost = form.city.trim().toLowerCase() === 'lahore' ? 200 : 350;
                   <p className="text-gray-700 mb-4 text-sm sm:text-base">
                     Please transfer the total amount of PKR {total.toLocaleString()} to our account:
                   </p>
-  <ul className="list-disc list-inside text-gray-800 text-sm sm:text-base mb-4">
-                     <li><strong>Account Name:</strong> Haba Amin </li>
+                  <ul className="list-disc list-inside text-gray-800 text-sm sm:text-base mb-4">
+                    <li><strong>Account Name:</strong> Haba Amin</li>
                     <li><strong>JazzCash Number:</strong> 03234016813</li>
-                    <li><strong>Bank Account Details:</strong> </li>
-                    <li><strong>Bank name</strong> Meezan Bank</li>
-                    <li><strong>Account name</strong> AYESHA AMIN</li>
-                    <li><strong>Account number</strong> 02360112042678</li>
+                    <li><strong>Bank Account Details:</strong></li>
+                    <li><strong>Bank name:</strong> Meezan Bank</li>
+                    <li><strong>Account name:</strong> AYESHA AMIN</li>
+                    <li><strong>Account number:</strong> 02360112042678</li>
                   </ul>
                   
                   <p className="text-gray-700 mb-4 text-sm sm:text-base">
@@ -451,7 +453,24 @@ const shippingCost = form.city.trim().toLowerCase() === 'lahore' ? 200 : 350;
                         Converting image...
                       </p>
                     )}
+                  </div>
                 </div>
+              )}
+
+              {form.paymentMethod === 'Cash on Delivery (COD)' && (
+                <div className="mt-6 p-4 border border-green-300 bg-green-50 rounded-md">
+                  <h3 className="text-base sm:text-lg font-semibold mb-3">Cash on Delivery (COD) Information</h3>
+                  <p className="text-gray-700 mb-4 text-sm sm:text-base">
+                    Pay cash when your order is delivered. Please have exact change ready.
+                  </p>
+                  <p className="text-gray-700 mb-4 text-sm sm:text-base">
+                    <strong>Total Amount to Pay on Delivery:</strong> PKR {total.toLocaleString()}
+                  </p>
+                  <ul className="list-disc list-inside text-gray-800 text-sm sm:text-base">
+                    <li>You will pay the delivery person upon receiving your order</li>
+                    <li>Please verify the items before making payment</li>
+                    <li>Contact us if there are any issues with your order</li>
+                  </ul>
                 </div>
               )}
 
@@ -559,6 +578,15 @@ const shippingCost = form.city.trim().toLowerCase() === 'lahore' ? 200 : 350;
                 <span className="font-bold text-base sm:text-lg">PKR {total.toLocaleString()}</span>
               </div>
 
+              {/* Payment Method Summary */}
+              <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                <p className="text-sm text-gray-600">Payment Method:</p>
+                <p className="text-sm font-medium">{form.paymentMethod}</p>
+                {form.paymentMethod === 'Cash on Delivery (COD)' && (
+                  <p className="text-xs text-gray-500 mt-1">Pay PKR {total.toLocaleString()} upon delivery</p>
+                )}
+              </div>
+
               <button
                 onClick={placeOrder}
                 disabled={loading || cartItems.length === 0 || convertingImage}
@@ -574,6 +602,8 @@ const shippingCost = form.city.trim().toLowerCase() === 'lahore' ? 200 : 350;
                   </span>
                 ) : cartItems.length === 0 ? (
                   'No Items to Order'
+                ) : form.paymentMethod === 'Cash on Delivery (COD)' ? (
+                  'Place COD Order'
                 ) : (
                   'Place Order Now'
                 )}
