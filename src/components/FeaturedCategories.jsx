@@ -69,6 +69,18 @@ const categories = [
     imageUrl:"https://pbs.twimg.com/media/G2L_sByWAAEkmWY?format=png&name=small",
      link: "Tiaras"
   },
+            {
+      id: 7,
+    title: "Arm cuffs⭒˚.⋆",
+    imageUrl:"https://i.pinimg.com/736x/1d/50/3e/1d503e23be324ac37218017f893b597b.jpg",
+     link: "Arm cuffs"
+  },
+                {
+      id: 7,
+    title: "Neck pieces⭒˚.⋆",
+    imageUrl:"https://i.pinimg.com/736x/e1/8d/d7/e18dd7c251ba4a5896ffabf321ff22ff.jpg",
+     link: "Neck pieces"
+  },
   //       {
   //   id: 6,
   //   title: "Bag charms",
