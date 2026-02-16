@@ -81,6 +81,18 @@ const categories = [
     imageUrl:"https://i.pinimg.com/736x/e1/8d/d7/e18dd7c251ba4a5896ffabf321ff22ff.jpg",
      link: "Neck pieces"
   },
+                    {
+      id: 7,
+    title: "Eid Boxes⭒˚.⋆",
+    imageUrl:"https://pbs.twimg.com/media/HBT8lKfaIAAnsHr?format=jpg&name=small",
+     link: "Eid Boxes"
+  },
+                        {
+      id: 7,
+    title: "Bangles⭒˚.⋆",
+    imageUrl:"https://pbs.twimg.com/media/HBT8ogUbcAEFE5x?format=jpg&name=small",
+     link: "Bangles"
+  },
   //       {
   //   id: 6,
   //   title: "Bag charms",
