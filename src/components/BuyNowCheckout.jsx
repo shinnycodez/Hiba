@@ -47,8 +47,8 @@ const BuyNowCheckout = () => {
   }, []);
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0);
-  // Fixed delivery charges: PKR 250 for every city
-  const shippingCost = 250;
+  // Fixed delivery charges: PKR 300 for every city
+  const shippingCost = 300;
   const total = subtotal + shippingCost;
 
   const handleChange = (e) => {
@@ -387,7 +387,7 @@ const BuyNowCheckout = () => {
                   <div className="ml-3">
                     <p className="font-medium text-gray-900 text-sm sm:text-base">Standard Delivery</p>
                     <p className="text-xs sm:text-sm text-gray-500">
-                      PKR 250 for all cities - Delivery in 8-10 business days
+                      PKR 300 for all cities - Delivery in 8-10 business days
                     </p>
                   </div>
                 </label>
