@@ -6,7 +6,9 @@ import {
   where,
   onSnapshot,
   deleteDoc,
-  addDoc
+  addDoc,
+  updateDoc,
+  getDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import Header from './Header';
@@ -34,6 +36,7 @@ const CheckoutPage = () => {
   const [errors, setErrors] = useState({});
   const [bankTransferProofBase64, setBankTransferProofBase64] = useState(null);
   const [convertingImage, setConvertingImage] = useState(false);
+  const [stockValidationErrors, setStockValidationErrors] = useState([]);
 
   // Load cart items from localStorage or session storage
   useEffect(() => {
@@ -74,6 +77,85 @@ const CheckoutPage = () => {
   const shippingCost = 300;
   const total = subtotal + shippingCost;
 
+  // Stock validation and reduction function
+  const validateAndReduceStock = async (items) => {
+    const stockErrors = [];
+    const stockUpdates = [];
+
+    // First, validate all items have sufficient stock
+    for (const item of items) {
+      const productRef = doc(db, "products", item.productId || item.id);
+      const productDoc = await getDoc(productRef);
+      
+      if (!productDoc.exists()) {
+        stockErrors.push(`${item.title}: Product not found`);
+        continue;
+      }
+
+      const product = productDoc.data();
+      const quantity = item.quantity || 1;
+
+      // Determine which stock to check based on variation/size
+      let currentStock = null;
+      let stockKey = null;
+
+      if (item.variation && product.stock && product.stock[item.variation] !== undefined) {
+        currentStock = product.stock[item.variation];
+        stockKey = `stock.${item.variation}`;
+      } 
+      else if (item.size && product.stock && product.stock[item.size] !== undefined) {
+        currentStock = product.stock[item.size];
+        stockKey = `stock.${item.size}`;
+      }
+      else {
+        // Use default stock
+        currentStock = product.defaultStock || 0;
+        stockKey = 'defaultStock';
+      }
+
+      // Check if stock is sufficient
+      if (currentStock < quantity) {
+        stockErrors.push(
+          `${item.title}${item.variation ? ` (${item.variation})` : ''}${item.size ? ` (${item.size})` : ''}: ` +
+          `Only ${currentStock} left in stock, but you ordered ${quantity}`
+        );
+      } else {
+        // Prepare stock update
+        const newStock = currentStock - quantity;
+        stockUpdates.push({
+          productId: productRef.id,
+          productRef,
+          stockKey,
+          newStock,
+          item: item
+        });
+      }
+    }
+
+    // If any stock validation failed, return errors
+    if (stockErrors.length > 0) {
+      return { success: false, errors: stockErrors };
+    }
+
+    // Execute all stock updates
+    for (const update of stockUpdates) {
+      try {
+        await updateDoc(update.productRef, {
+          [update.stockKey]: update.newStock
+        });
+        console.log(`Stock updated for ${update.item.title}: ${update.stockKey} -> ${update.newStock}`);
+      } catch (err) {
+        console.error(`Failed to update stock for ${update.item.title}:`, err);
+        return { 
+          success: false, 
+          errors: [`Failed to update stock for ${update.item.title}. Please try again.`] 
+        };
+      }
+    }
+
+    return { success: true, errors: [] };
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm(prev => ({
@@ -86,12 +168,21 @@ const CheckoutPage = () => {
     // Clear the Base64 string if payment method changes from JazzCash/Bank Transfer
     if (name === 'paymentMethod' && value !== 'JazzCash/Bank Transfer') {
       setBankTransferProofBase64(null);
+      setErrors(prev => ({ ...prev, bankTransferProof: '' }));
     }
   };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      // Basic file size validation (5MB limit)
+      const MAX_FILE_SIZE = 5 * 1024 * 1024;
+      if (file.size > MAX_FILE_SIZE) {
+        setErrors(prev => ({ ...prev, bankTransferProof: 'File size exceeds 5MB limit.' }));
+        setBankTransferProofBase64(null);
+        return;
+      }
+
       setConvertingImage(true);
       setErrors(prev => ({ ...prev, bankTransferProof: '' }));
 
@@ -114,7 +205,7 @@ const CheckoutPage = () => {
 
   const validateForm = () => {
     const newErrors = {};
-    const requiredFields = [ 'fullName', 'phone', 'address', 'city', 'country'];
+    const requiredFields = ['fullName', 'phone', 'address', 'city', 'country'];
     requiredFields.forEach(field => {
       if (!form[field]) {
         newErrors[field] = 'This field is required';
@@ -124,6 +215,11 @@ const CheckoutPage = () => {
     // Email validation
     if (form.email && !/\S+@\S+\.\S+/.test(form.email)) {
       newErrors.email = 'Please enter a valid email address';
+    }
+
+    // Basic phone number validation
+    if (form.phone && !/^\d{7,}$/.test(form.phone.replace(/[\s\-\(\)]/g, ''))) {
+      newErrors.phone = 'Please enter a valid phone number (at least 7 digits)';
     }
 
     // Only require bank transfer proof for JazzCash/Bank Transfer
@@ -143,9 +239,46 @@ const CheckoutPage = () => {
   };
 
   const placeOrder = async () => {
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      // Scroll to the first error field
+      const firstErrorField = Object.keys(errors)[0];
+      if (firstErrorField) {
+        const element = document.getElementsByName(firstErrorField)[0] || 
+                      document.getElementById(firstErrorField);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+      return;
+    }
 
     setLoading(true);
+    setStockValidationErrors([]);
+
+    // Prepare order items with product IDs
+    const orderItems = cartItems.map(item => ({
+      productId: item.productId || item.id,
+      title: item.title,
+      quantity: item.quantity,
+      price: item.price,
+      image: item.image,
+      // Store variation details
+      variation: item.variation || null,
+      type: item.type || null,
+      size: item.size || null,
+      lining: item.lining || false,
+    }));
+
+    // FIRST: Validate and reduce stock
+    const stockResult = await validateAndReduceStock(orderItems);
+    
+    if (!stockResult.success) {
+      setStockValidationErrors(stockResult.errors);
+      setLoading(false);
+      // Scroll to show stock errors
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
 
     // Generate a unique order ID for guest checkout
     const orderId = 'ORDER_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -154,18 +287,7 @@ const CheckoutPage = () => {
       orderId,
       customerType: 'guest', // Mark as guest order
       customerEmail: form.email,
-      items: cartItems.map(item => ({
-        productId: item.productId || item.id,
-        title: item.title,
-        quantity: item.quantity,
-        price: item.price,
-        image: item.image,
-        // Store variation details
-        variation: item.variation || null,
-        type: item.type || null,
-        size: item.size || null,
-        lining: item.lining || false,
-      })),
+      items: orderItems,
       shipping: form.shippingMethod,
       payment: form.paymentMethod,
       shippingAddress: {
@@ -184,6 +306,8 @@ const CheckoutPage = () => {
       total,
       createdAt: new Date(),
       status: 'processing',
+      // Track that stock was already reduced at order placement
+      stockReducedAtOrderPlacement: true,
       // Only include bank transfer proof for JazzCash/Bank Transfer payments
       bankTransferProofBase64: form.paymentMethod === 'JazzCash/Bank Transfer' ? bankTransferProofBase64 : null,
     };
@@ -197,6 +321,7 @@ const CheckoutPage = () => {
       // Store order ID for confirmation page
       sessionStorage.setItem('lastOrderId', orderId);
       sessionStorage.setItem('lastOrderEmail', form.email);
+      sessionStorage.setItem('lastOrderType', 'checkout');
 
       navigate('/thanks');
     } catch (err) {
@@ -255,6 +380,34 @@ const CheckoutPage = () => {
           </nav>
 
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-8">Checkout</h1>
+
+          {/* Stock Validation Errors Display */}
+          {stockValidationErrors.length > 0 && (
+            <div className="mb-6 p-4 border border-red-300 bg-red-50 rounded-md">
+              <div className="flex items-start">
+                <svg className="w-5 h-5 text-red-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  <h3 className="text-red-800 font-medium">Stock Availability Issues</h3>
+                  <ul className="list-disc list-inside mt-2">
+                    {stockValidationErrors.map((error, index) => (
+                      <li key={index} className="text-red-700 text-sm">{error}</li>
+                    ))}
+                  </ul>
+                  <p className="text-red-700 text-sm mt-2">
+                    Please update your cart quantity or remove items and try again.
+                  </p>
+                  <button
+                    onClick={() => navigate('/cart')}
+                    className="mt-3 bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-red-700 transition"
+                  >
+                    Go to Cart
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Left: Form */}
@@ -428,7 +581,7 @@ const CheckoutPage = () => {
                     />
                     {errors.bankTransferProof && <p className="mt-1 text-sm text-red-600">{errors.bankTransferProof}</p>}
                     {bankTransferProofBase64 && (
-                      <p className="mt-2 text-sm text-gray-600">Image selected and converted.</p>
+                      <p className="mt-2 text-sm text-green-600">✓ Payment proof uploaded.</p>
                     )}
                     {convertingImage && (
                       <p className="mt-2 text-sm text-gray-600 flex items-center">
@@ -570,8 +723,12 @@ const CheckoutPage = () => {
 
               <button
                 onClick={placeOrder}
-                disabled={loading || cartItems.length === 0 || convertingImage}
-                className={`mt-6 w-full py-3 px-4 rounded-md font-medium text-base ${loading || cartItems.length === 0 || convertingImage ? 'bg-gray-400 cursor-not-allowed' : 'bg-black text-white hover:bg-gray-800'} transition`}
+                disabled={loading || cartItems.length === 0 || convertingImage || (form.paymentMethod === 'JazzCash/Bank Transfer' && !bankTransferProofBase64)}
+                className={`mt-6 w-full py-3 px-4 rounded-md font-medium text-base ${
+                  loading || cartItems.length === 0 || convertingImage || (form.paymentMethod === 'JazzCash/Bank Transfer' && !bankTransferProofBase64)
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-black text-white hover:bg-gray-800'
+                } transition`}
               >
                 {loading || convertingImage ? (
                   <span className="flex items-center justify-center">
@@ -583,6 +740,8 @@ const CheckoutPage = () => {
                   </span>
                 ) : cartItems.length === 0 ? (
                   'Your Cart is Empty'
+                ) : form.paymentMethod === 'JazzCash/Bank Transfer' && !bankTransferProofBase64 ? (
+                  'Upload payment proof'
                 ) : form.paymentMethod === 'Cash on Delivery (COD)' ? (
                   'Place COD Order'
                 ) : (

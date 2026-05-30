@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import Header from './Header';
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +26,7 @@ const BuyNowCheckout = () => {
   const [errors, setErrors] = useState({});
   const [bankTransferProofBase64, setBankTransferProofBase64] = useState(null);
   const [convertingImage, setConvertingImage] = useState(false);
+  const [stockValidationErrors, setStockValidationErrors] = useState([]);
 
   // Load buy now product from session storage
   useEffect(() => {
@@ -50,6 +51,79 @@ const BuyNowCheckout = () => {
   // Fixed delivery charges: PKR 300 for every city
   const shippingCost = 300;
   const total = subtotal + shippingCost;
+
+  // Stock validation and reduction function
+  const validateAndReduceStock = async (items) => {
+    const stockErrors = [];
+    const stockUpdates = [];
+
+    for (const item of items) {
+      const productRef = doc(db, "products", item.productId || item.id.replace('temp_', ''));
+      const productDoc = await getDoc(productRef);
+      
+      if (!productDoc.exists()) {
+        stockErrors.push(`${item.title}: Product not found`);
+        continue;
+      }
+
+      const product = productDoc.data();
+      const quantity = item.quantity || 1;
+      let currentStock = null;
+      let stockKey = null;
+
+      // Check stock based on variation (color) first
+      if (item.variation && product.stock && product.stock[item.variation] !== undefined) {
+        currentStock = product.stock[item.variation];
+        stockKey = `stock.${item.variation}`;
+      } 
+      // Check stock based on size
+      else if (item.size && product.stock && product.stock[item.size] !== undefined) {
+        currentStock = product.stock[item.size];
+        stockKey = `stock.${item.size}`;
+      }
+      // Use default stock
+      else {
+        currentStock = product.defaultStock || 0;
+        stockKey = 'defaultStock';
+      }
+
+      if (currentStock < quantity) {
+        stockErrors.push(
+          `${item.title}${item.variation ? ` (${item.variation})` : ''}${item.size ? ` (${item.size})` : ''}: ` +
+          `Only ${currentStock} left in stock, but you ordered ${quantity}`
+        );
+      } else {
+        stockUpdates.push({
+          productId: productRef.id,
+          productRef,
+          stockKey,
+          newStock: currentStock - quantity,
+          item: item
+        });
+      }
+    }
+
+    if (stockErrors.length > 0) {
+      return { success: false, errors: stockErrors };
+    }
+
+    // Perform all stock updates
+    for (const update of stockUpdates) {
+      try {
+        await updateDoc(update.productRef, {
+          [update.stockKey]: update.newStock
+        });
+      } catch (err) {
+        console.error(`Error updating stock for ${update.item.title}:`, err);
+        return { 
+          success: false, 
+          errors: [`Failed to update stock for ${update.item.title}. Please try again.`] 
+        };
+      }
+    }
+    
+    return { success: true, errors: [] };
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -104,7 +178,7 @@ const BuyNowCheckout = () => {
 
   const validateForm = () => {
     const newErrors = {};
-    const requiredFields = [ 'fullName', 'phone', 'address', 'city', 'region', 'country'];
+    const requiredFields = ['fullName', 'phone', 'address', 'city', 'region', 'country'];
     
     requiredFields.forEach(field => {
       if (!form[field]) {
@@ -146,6 +220,16 @@ const BuyNowCheckout = () => {
     }
 
     setLoading(true);
+    setStockValidationErrors([]);
+
+    // Validate and reduce stock before placing order
+    const stockResult = await validateAndReduceStock(cartItems);
+    if (!stockResult.success) {
+      setStockValidationErrors(stockResult.errors);
+      setLoading(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
 
     // Generate unique order ID
     const orderId = 'BUYNOW_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -185,6 +269,7 @@ const BuyNowCheckout = () => {
       createdAt: new Date(),
       status: 'processing',
       buyNow: true,
+      stockReducedAtOrderPlacement: true, // Track that stock was reduced
       // Only include bank transfer proof for JazzCash/Bank Transfer payments
       bankTransferProofBase64: form.paymentMethod === 'JazzCash/Bank Transfer' ? bankTransferProofBase64 : null,
     };
@@ -256,6 +341,31 @@ const BuyNowCheckout = () => {
           </nav>
 
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-8">Buy Now Checkout</h1>
+
+          {/* Stock Validation Errors Display */}
+          {stockValidationErrors.length > 0 && (
+            <div className="mb-6 p-4 border border-red-300 bg-red-50 rounded-md">
+              <div className="flex items-start">
+                <svg className="w-5 h-5 text-red-600 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  <h3 className="text-red-800 font-medium">Stock Availability Issues</h3>
+                  <ul className="list-disc list-inside mt-2">
+                    {stockValidationErrors.map((error, index) => (
+                      <li key={index} className="text-red-700 text-sm">{error}</li>
+                    ))}
+                  </ul>
+                  <button 
+                    onClick={() => navigate('/')} 
+                    className="mt-3 bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-red-700 transition"
+                  >
+                    Continue Shopping
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid lg:grid-cols-2 gap-8">
             {/* Left: Form */}
@@ -440,7 +550,7 @@ const BuyNowCheckout = () => {
                     />
                     {errors.bankTransferProof && <p className="mt-1 text-sm text-red-600">{errors.bankTransferProof}</p>}
                     {bankTransferProofBase64 && (
-                      <p className="mt-2 text-sm text-gray-600">Image selected and converted.</p>
+                      <p className="mt-2 text-sm text-gray-600">✓ Payment proof uploaded.</p>
                     )}
                     {convertingImage && (
                       <p className="mt-2 text-sm text-gray-600 flex items-center">

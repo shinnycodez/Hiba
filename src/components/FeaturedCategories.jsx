@@ -93,6 +93,18 @@ const categories = [
     imageUrl:"https://pbs.twimg.com/media/HBT8ogUbcAEFE5x?format=jpg&name=small",
      link: "Bangles"
   },
+                          {
+      id: 7,
+    title: "Hair Accessories⭒˚.⋆",
+    imageUrl:"https://pbs.twimg.com/media/HJkrk7JbEAAI3n4?format=jpg&name=medium",
+     link: "Hair Accessories"
+  },
+  {
+      id: 7,
+    title: "Charms⭒˚.⋆",
+    imageUrl:"https://pbs.twimg.com/media/HJkrpnWbgAAVbHn?format=jpg&name=900x900",
+     link: "Charms"
+  },
   //       {
   //   id: 6,
   //   title: "Bag charms",
